@@ -88,8 +88,8 @@
 
     function generateTimeSlots() {
       var slots = [];
-      var startMin = 7 * 60;
-      var endMin = 14 * 60 + 30;
+      var startMin = 7 * 60 + 10;   // 7:10 AM
+      var endMin = 14 * 60 + 30;    // 2:30 PM
       for (var m = startMin; m <= endMin; m += 10) {
         slots.push({
           minutes: m,
