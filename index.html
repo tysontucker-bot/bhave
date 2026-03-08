@@ -74,13 +74,15 @@
     state.records = {};
 
     data.forEach(row => {
-      if (!row[0]) return;
+      if (!row || row.length < 5) return;
 
-      const date = row[0];
-      const student = row[1];
-      const time = parseInt(row[2]);
-      const behavior = row[3];
-      const count = parseInt(row[4]);
+      const date = String(row[0]).trim();
+      const student = String(row[1]).trim();
+      const time = Number(row[2]);
+      const behavior = String(row[3]).trim();
+      const count = Number(row[4]);
+
+      if (!date || !student || !behavior || isNaN(time) || isNaN(count)) return;
 
       if (!state.records[date]) state.records[date] = {};
       if (!state.records[date][student]) state.records[date][student] = {};
