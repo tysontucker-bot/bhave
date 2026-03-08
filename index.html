@@ -98,6 +98,7 @@ async function saveDataEntry(date, student, minutes, behavior, count) {
   try {
     await fetch(API_URL, {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json"
       },
