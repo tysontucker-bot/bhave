@@ -164,8 +164,14 @@ async function saveDataEntry(date, student, minutes, behavior, count) {
 
     // ── APP INIT ───────────────────────────────────────────────
 
-    async function initApp() {
+async function initApp() {
   await loadData();
+
+  const dates = Object.keys(state.records);
+
+  if (dates.length > 0) {
+    state.selectedDate = dates.sort().reverse()[0];
+  }
 
   if (state.students.length > 0 && !state.selectedStudent) {
     state.selectedStudent = state.students[0];
