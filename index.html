@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Behavior Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 overflow-hidden">
+  <div id="app" class="fixed inset-0 max-w-lg mx-auto bg-white shadow-xl flex flex-col overflow-hidden"></div>
+
+  <script>
+    // ── UTILITIES ──────────────────────────────────────────────
+
+    function todayStr() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function formatDate(dateStr) {
+      var d = new Date(dateStr + 'T12:00:00');
+      return d.toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+
+    function pad2(n) {
+      return n < 10 ? '0' + n : String(n);
+    }
+
+    function minutesToLabel(m) {
+      var h = Math.floor(m / 60);
+      var min = m % 60;
+      var ampm = h < 12 ? 'AM' : 'PM';
+      var h12 = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+      return h12 + ':' + pad2(min) + '\u00a0' + ampm;
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+    }
+
+    function escAttr(str) {
+      return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+    }
+
+    // ── STATE ──────────────────────────────────────────────────
+
+    var state = {
+      currentPage: 'tracker',
+      selectedStudent: '',
+      selectedDate: todayStr(),
+      trendsMode: 'weekly',
+      expandedHours: {},
+      students: ['Alice', 'Bob', 'Charlie'],
+      behaviors: ['Talking Out', 'Out of Seat', 'Aggression'],
+      records: {}
+    };
+
+    // ── STORAGE ────────────────────────────────────────────────
+
+    function saveData() {
+      localStorage.setItem('bhave_students', JSON.stringify(state.students));
+      localStorage.setItem('bhave_behaviors', JSON.stringify(state.behaviors));
+      localStorage.setItem('bhave_records', JSON.stringify(state.records));
+    }
+
+    function loadData() {
+      try {
+        var s = localStorage.getItem('bhave_students');
+        var b = localStorage.getItem('bhave_behaviors');
+        var r = localStorage.getItem('bhave_records');
+        if (s) state.students = JSON.parse(s);
+        if (b) state.behaviors = JSON.parse(b);
+        if (r) state.records = JSON.parse(r);
+      } catch (e) {
+        console.error('Failed to load stored data. Using default values. Error:', e);
+      }
+    }
+
+    // ── TIME SLOTS ─────────────────────────────────────────────
+
+    function generateTimeSlots() {
+      var slots = [];
+      var startMin = 7 * 60;
+      var endMin = 14 * 60 + 30;
+      for (var m = startMin; m <= endMin; m += 10) {
+        slots.push({
+          minutes: m,
+          label: minutesToLabel(m),
+          hour: Math.floor(m / 60)
+        });
+      }
+      return slots;
+    }
+
+    function groupSlotsByHour(slots) {
+      var groups = {};
+      slots.forEach(function (slot) {
+        if (!groups[slot.hour]) groups[slot.hour] = [];
+        groups[slot.hour].push(slot);
+      });
+      return groups;
+    }
+
+    // ── RECORDS ────────────────────────────────────────────────
+
+    function getCount(date, student, minutes, behavior) {
+      var d = state.records[date];
+      if (!d) return 0;
+      var s = d[student];
+      if (!s) return 0;
+      var t = s[minutes];
+      if (!t) return 0;
+      return t[behavior] || 0;
+    }
+
+    function setCount(date, student, minutes, behavior, value) {
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+      state.records[date][student][minutes][behavior] = value;
+      saveData();
+    }
+
+    // ── APP INIT ───────────────────────────────────────────────
+
+    function initApp() {
+      loadData();
+      if (state.students.length > 0 && !state.selectedStudent) {
+        state.selectedStudent = state.students[0];
+      }
+      renderApp();
+    }
+
+    // ── FULL APP RENDER ────────────────────────────────────────
+
+    function renderApp() {
+      var app = document.getElementById('app');
+      app.innerHTML = buildHeader() + buildMainContent() + buildNav();
+    }
+
+    function buildMainContent() {
+      var inner = '';
+      if (state.currentPage === 'tracker') inner = buildTrackerPage();
+      else if (state.currentPage === 'summary') inner = buildSummaryPage();
+      else if (state.currentPage === 'trends') inner = buildTrendsPage();
+      else if (state.currentPage === 'settings') inner = buildSettingsPage();
+      return '<main id="content" class="flex-1 overflow-y-auto px-4 py-2 pb-4">' + inner + '</main>';
+    }
+
+    // ── CURRENT PAGE RE-RENDER ─────────────────────────────────
+
+    function renderPage() {
+      if (state.currentPage === 'tracker') renderTracker();
+      else if (state.currentPage === 'summary') renderSummary();
+      else if (state.currentPage === 'trends') renderTrends();
+      else if (state.currentPage === 'settings') renderSettings();
+    }
+
+    // ── HEADER ─────────────────────────────────────────────────
+
+    function buildHeader() {
+      var chips = state.students.map(function (s) {
+        var isActive = s === state.selectedStudent;
+        var cls = isActive
+          ? 'flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-blue-600'
+          : 'flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-400';
+        return '<button class="' + cls + '" onclick="selectStudent(\'' + escAttr(s) + '\')">'
+          + escHtml(s)
+          + '</button>';
+      }).join('');
+
+      var studentRow = chips
+        ? '<div class="flex gap-2 px-4 pb-3 overflow-x-auto">' + chips + '</div>'
+        : '<div class="px-4 pb-3 text-blue-200 text-xs italic">No students \u2014 add them in Settings.</div>';
+
+      return '<header class="flex-none bg-blue-600 text-white">'
+        + '<div class="px-4 pt-4 pb-2">'
+        + '<h1 class="text-xl font-bold leading-tight">Behavior Tracker</h1>'
+        + '<p class="text-blue-100 text-sm mt-0.5">' + formatDate(state.selectedDate) + '</p>'
+        + '</div>'
+        + studentRow
+        + '</header>';
+    }
+
+    // ── NAV ────────────────────────────────────────────────────
+
+    function buildNav() {
+      var tabs = [
+        { id: 'tracker',  label: 'Tracker',  icon: '&#128203;' },
+        { id: 'summary',  label: 'Summary',  icon: '&#128202;' },
+        { id: 'trends',   label: 'Trends',   icon: '&#128200;' },
+        { id: 'settings', label: 'Settings', icon: '&#9881;&#65039;' }
+      ];
+      var items = tabs.map(function (t) {
+        var active = t.id === state.currentPage;
+        var cls = 'flex flex-col items-center flex-1 py-2 text-xs font-medium '
+          + (active ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700');
+        return '<button class="' + cls + '" onclick="switchPage(\'' + t.id + '\')">'
+          + '<span class="text-lg leading-none">' + t.icon + '</span>'
+          + '<span class="mt-0.5">' + t.label + '</span>'
+          + '</button>';
+      }).join('');
+      return '<nav class="flex-none bg-white border-t border-gray-200 flex">' + items + '</nav>';
+    }
+
+    // ── NAVIGATION ACTIONS ─────────────────────────────────────
+
+    function switchPage(page) {
+      state.currentPage = page;
+      renderApp();
+    }
+
+    function selectStudent(student) {
+      state.selectedStudent = student;
+      renderApp();
+    }
+
+    // ── TRACKER PAGE ───────────────────────────────────────────
+
+    function renderTracker() {
+      var content = document.getElementById('content');
+      if (content) content.innerHTML = buildTrackerPage();
+    }
+
+    function buildTrackerPage() {
+      if (!state.selectedStudent) {
+        return '<p class="text-center text-gray-400 mt-8 text-sm">No student selected.'
+          + ' Add students in Settings.</p>';
+      }
+      var slots = generateTimeSlots();
+      var groups = groupSlotsByHour(slots);
+      var hours = Object.keys(groups).map(Number).sort(function (a, b) { return a - b; });
+      return hours.map(function (h) {
+        return buildHourSection(h, groups[h]);
+      }).join('');
+    }
+
+    function buildHourSection(hour, slots) {
+      var isOpen = !!state.expandedHours[hour];
+
+      var hourTotal = 0;
+      slots.forEach(function (slot) {
+        state.behaviors.forEach(function (b) {
+          hourTotal += getCount(state.selectedDate, state.selectedStudent, slot.minutes, b);
+        });
+      });
+
+      var badge = hourTotal > 0
+        ? '<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs'
+          + ' font-semibold bg-red-100 text-red-700">' + hourTotal + '</span>'
+        : '';
+
+      var firstLabel = slots[0].label;
+      var lastLabel = slots[slots.length - 1].label;
+      var rangeLabel = firstLabel + ' \u2013 ' + lastLabel;
+      var chevron = isOpen ? '&#9650;' : '&#9660;';
+
+      var slotContent = isOpen
+        ? '<div class="divide-y divide-gray-100">' + slots.map(buildSlotRow).join('') + '</div>'
+        : '';
+
+      return '<div class="mb-2 rounded-lg border border-gray-200 overflow-hidden">'
+        + '<button class="w-full flex items-center justify-between px-4 py-3 bg-gray-50'
+        + ' hover:bg-gray-100 text-sm font-medium text-gray-700" onclick="toggleHour(' + hour + ')">'
+        + '<span>' + rangeLabel + badge + '</span>'
+        + '<span class="text-gray-400 text-xs">' + chevron + '</span>'
+        + '</button>'
+        + slotContent
+        + '</div>';
+    }
+
+    function buildSlotRow(slot) {
+      var date = state.selectedDate;
+      var student = state.selectedStudent;
+      var m = slot.minutes;
+
+      var cols = state.behaviors.map(function (b) {
+        var count = getCount(date, student, m, b);
+        var dA = escAttr(date);
+        var sA = escAttr(student);
+        var bA = escAttr(b);
+        return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
+          + '<span class="text-xs text-gray-500 text-center truncate w-14">'
+          + escHtml(b)
+          + '</span>'
+          + '<div class="flex items-center gap-1">'
+          + '<button class="w-7 h-7 flex items-center justify-center rounded bg-gray-200'
+          + ' text-gray-700 font-bold hover:bg-gray-300 text-base leading-none"'
+          + ' onclick="decr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
+          + '&#8722;'
+          + '</button>'
+          + '<span class="w-6 text-center text-sm font-semibold tabular-nums">'
+          + count
+          + '</span>'
+          + '<button class="w-7 h-7 flex items-center justify-center rounded bg-blue-500'
+          + ' text-white font-bold hover:bg-blue-600 text-base leading-none"'
+          + ' onclick="incr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
+          + '+'
+          + '</button>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="px-4 py-2">'
+        + '<div class="text-xs text-gray-400 mb-1.5">' + slot.label + '</div>'
+        + '<div class="flex flex-wrap gap-3">' + cols + '</div>'
+        + '</div>';
+    }
+
+    function toggleHour(hour) {
+      state.expandedHours[hour] = !state.expandedHours[hour];
+      renderPage();
+    }
+
+    function incr(date, student, minutes, behavior) {
+      var cur = getCount(date, student, minutes, behavior);
+      setCount(date, student, minutes, behavior, cur + 1);
+      renderPage();
+    }
+
+    function decr(date, student, minutes, behavior) {
+      var cur = getCount(date, student, minutes, behavior);
+      if (cur > 0) setCount(date, student, minutes, behavior, cur - 1);
+      renderPage();
+    }
+
+    // ── SUMMARY PAGE ───────────────────────────────────────────
+
+    function renderSummary() {
+      var content = document.getElementById('content');
+      if (content) content.innerHTML = buildSummaryPage();
+    }
+
+    function buildSummaryPage() {
+      var date = state.selectedDate;
+      var student = state.selectedStudent;
+      if (!student) {
+        return '<p class="text-center text-gray-400 mt-8 text-sm">No student selected.</p>';
+      }
+
+      var dayData = (state.records[date] && state.records[date][student]) || {};
+      var behaviorTotals = {};
+      state.behaviors.forEach(function (b) { behaviorTotals[b] = 0; });
+      var total = 0;
+
+      Object.keys(dayData).forEach(function (ts) {
+        var slotData = dayData[ts];
+        Object.keys(slotData).forEach(function (b) {
+          var n = slotData[b] || 0;
+          total += n;
+          if (Object.prototype.hasOwnProperty.call(behaviorTotals, b)) {
+            behaviorTotals[b] += n;
+          }
+        });
+      });
+
+      var rows = state.behaviors.map(function (b) {
+        var count = behaviorTotals[b];
+        var pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        return '<div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">'
+          + '<span class="text-sm font-medium text-gray-700 flex-1 mr-4 truncate">'
+          + escHtml(b)
+          + '</span>'
+          + '<div class="flex items-center gap-2 flex-shrink-0">'
+          + '<div class="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">'
+          + '<div class="h-2 rounded-full bg-blue-500" style="width:' + pct + '%"></div>'
+          + '</div>'
+          + '<span class="text-sm font-bold text-gray-800 w-5 text-right tabular-nums">'
+          + count
+          + '</span>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="mt-2 space-y-4">'
+        + '<div class="rounded-xl bg-blue-50 p-6 text-center">'
+        + '<div class="text-5xl font-bold text-blue-700">' + total + '</div>'
+        + '<div class="text-sm text-blue-500 mt-1 font-medium">Total Incidents</div>'
+        + '<div class="text-xs text-gray-400 mt-1">'
+        + escHtml(student) + ' &bull; ' + formatDate(date)
+        + '</div>'
+        + '</div>'
+        + '<div class="bg-white rounded-lg border border-gray-200 px-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">'
+        + 'Behavior Breakdown'
+        + '</h2>'
+        + rows
+        + '</div>'
+        + '</div>';
+    }
+
+    // ── TRENDS PAGE ────────────────────────────────────────────
+
+    function renderTrends() {
+      var content = document.getElementById('content');
+      if (content) content.innerHTML = buildTrendsPage();
+    }
+
+    function buildTrendsPage() {
+      var mode = state.trendsMode;
+      var activeCls = 'px-4 py-1.5 text-sm font-medium rounded-full bg-blue-600 text-white';
+      var inactiveCls = 'px-4 py-1.5 text-sm font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200';
+      var weeklyBtnCls = mode === 'weekly' ? activeCls : inactiveCls;
+      var monthlyBtnCls = mode === 'monthly' ? activeCls : inactiveCls;
+
+      var dates = getTrendDates(mode);
+      var chartTitle = mode === 'weekly' ? 'Last 7 Days' : 'Last 30 Days';
+
+      return '<div class="mt-2 space-y-4">'
+        + '<div class="flex gap-2">'
+        + '<button class="' + weeklyBtnCls + '" onclick="setTrendsMode(\'weekly\')">Weekly</button>'
+        + '<button class="' + monthlyBtnCls + '" onclick="setTrendsMode(\'monthly\')">Monthly</button>'
+        + '</div>'
+        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">'
+        + chartTitle
+        + '</h2>'
+        + buildBarChart(dates, mode)
+        + '</div>'
+        + '</div>';
+    }
+
+    function getTrendDates(mode) {
+      var count = mode === 'weekly' ? 7 : 30;
+      var dates = [];
+      var today = new Date();
+      for (var i = count - 1; i >= 0; i--) {
+        var d = new Date(today);
+        d.setDate(today.getDate() - i);
+        dates.push(d.toISOString().slice(0, 10));
+      }
+      return dates;
+    }
+
+    function getDayTotal(dateStr) {
+      var student = state.selectedStudent;
+      if (!student) return 0;
+      var dayData = (state.records[dateStr] && state.records[dateStr][student]) || {};
+      var total = 0;
+      Object.keys(dayData).forEach(function (ts) {
+        Object.keys(dayData[ts]).forEach(function (b) {
+          total += dayData[ts][b] || 0;
+        });
+      });
+      return total;
+    }
+
+    function buildBarChart(dates, mode) {
+      var values = dates.map(getDayTotal);
+      var maxVal = Math.max.apply(null, values.concat([1]));
+      var today = todayStr();
+
+      var bars = dates.map(function (d, i) {
+        var val = values[i];
+        var heightPct = Math.round((val / maxVal) * 100);
+        var isToday = d === today;
+        var barCls = isToday ? 'bg-blue-600 rounded-t' : 'bg-blue-300 rounded-t';
+        var labelDate = new Date(d + 'T12:00:00');
+        var label = mode === 'weekly'
+          ? labelDate.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3)
+          : String(labelDate.getDate());
+        var valLabel = val > 0 ? String(val) : '';
+        var barHeight = val > 0 ? Math.max(heightPct, 2) : 0;
+
+        return '<div class="flex flex-col items-center flex-1">'
+          + '<span class="text-xs font-semibold text-gray-600 mb-1 h-4 leading-4">'
+          + valLabel
+          + '</span>'
+          + '<div class="w-full flex items-end justify-center" style="height:100px">'
+          + '<div class="w-4/5 ' + barCls + '" style="height:' + barHeight + '%"></div>'
+          + '</div>'
+          + '<span class="text-xs text-gray-500 mt-1">' + label + '</span>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="flex items-end">' + bars + '</div>';
+    }
+
+    function setTrendsMode(mode) {
+      state.trendsMode = mode;
+      renderPage();
+    }
+
+    // ── SETTINGS PAGE ──────────────────────────────────────────
+
+    function renderSettings() {
+      var content = document.getElementById('content');
+      if (content) content.innerHTML = buildSettingsPage();
+    }
+
+    function buildSettingsPage() {
+      var studentItems = state.students.length > 0
+        ? state.students.map(function (s) {
+            return '<div class="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">'
+              + '<span class="text-sm text-gray-700">' + escHtml(s) + '</span>'
+              + '<button class="text-xs text-red-500 hover:text-red-700 font-medium"'
+              + ' onclick="removeStudent(\'' + escAttr(s) + '\')">Remove</button>'
+              + '</div>';
+          }).join('')
+        : '<p class="text-xs text-gray-400 py-2 italic">No students added yet.</p>';
+
+      var behaviorItems = state.behaviors.length > 0
+        ? state.behaviors.map(function (b) {
+            return '<div class="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">'
+              + '<span class="text-sm text-gray-700">' + escHtml(b) + '</span>'
+              + '<button class="text-xs text-red-500 hover:text-red-700 font-medium"'
+              + ' onclick="removeBehavior(\'' + escAttr(b) + '\')">Remove</button>'
+              + '</div>';
+          }).join('')
+        : '<p class="text-xs text-gray-400 py-2 italic">No behaviors added yet.</p>';
+
+      return '<div class="mt-2 space-y-4 pb-4">'
+        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Date</h2>'
+        + '<input type="date" value="' + state.selectedDate + '"'
+        + ' class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"'
+        + ' onchange="changeDate(this.value)">'
+        + '</div>'
+        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Students</h2>'
+        + studentItems
+        + '<div class="flex gap-2 mt-3">'
+        + '<input type="text" id="newStudentInput" placeholder="Student name"'
+        + ' class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">'
+        + '<button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"'
+        + ' onclick="addStudent()">Add</button>'
+        + '</div>'
+        + '</div>'
+        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Behaviors</h2>'
+        + behaviorItems
+        + '<div class="flex gap-2 mt-3">'
+        + '<input type="text" id="newBehaviorInput" placeholder="Behavior name"'
+        + ' class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">'
+        + '<button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"'
+        + ' onclick="addBehavior()">Add</button>'
+        + '</div>'
+        + '</div>'
+        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Data</h2>'
+        + '<p class="text-xs text-gray-400 mb-3">Permanently removes all recorded behavior data.</p>'
+        + '<button class="w-full py-2.5 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"'
+        + ' onclick="clearAllData()">Clear All Data</button>'
+        + '</div>'
+        + '</div>';
+    }
+
+    function changeDate(value) {
+      state.selectedDate = value;
+      renderApp();
+    }
+
+    function addStudent() {
+      var input = document.getElementById('newStudentInput');
+      if (!input) return;
+      var name = input.value.trim();
+      if (!name) return;
+      if (state.students.indexOf(name) !== -1) {
+        alert('A student with that name already exists. Please choose a different name.');
+        return;
+      }
+      state.students.push(name);
+      if (!state.selectedStudent) state.selectedStudent = name;
+      saveData();
+      renderApp();
+    }
+
+    function removeStudent(name) {
+      state.students = state.students.filter(function (s) { return s !== name; });
+      if (state.selectedStudent === name) {
+        state.selectedStudent = state.students.length > 0 ? state.students[0] : '';
+      }
+      saveData();
+      renderApp();
+    }
+
+    function addBehavior() {
+      var input = document.getElementById('newBehaviorInput');
+      if (!input) return;
+      var name = input.value.trim();
+      if (!name) return;
+      if (state.behaviors.indexOf(name) !== -1) {
+        alert('A behavior with that name already exists. Please choose a different name.');
+        return;
+      }
+      state.behaviors.push(name);
+      saveData();
+      renderPage();
+    }
+
+    function removeBehavior(name) {
+      state.behaviors = state.behaviors.filter(function (b) { return b !== name; });
+      saveData();
+      renderPage();
+    }
+
+    function clearAllData() {
+      if (!confirm('Clear all recorded behavior data for all students and dates? This action cannot be undone.')) return;
+      state.records = {};
+      state.expandedHours = {};
+      saveData();
+      renderApp();
+    }
+
+    // ── BOOT ───────────────────────────────────────────────────
+
+    initApp();
+  </script>
+</body>
+</html>
