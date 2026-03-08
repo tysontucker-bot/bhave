@@ -10,6 +10,7 @@
   <div id="app" class="fixed inset-0 max-w-lg mx-auto bg-white shadow-xl flex flex-col overflow-hidden"></div>
 
   <script>
+    const API_URL = "https://script.google.com/a/macros/saisd.org/s/AKfycbxyVvnKO6smZ2isi2MlNUAMvtoRgzroH-pkLAxpE2mPKRIdOyyS24uY7IaMqPe6L26XZw/exec";
     // ── UTILITIES ──────────────────────────────────────────────
 
     function todayStr() {
@@ -65,25 +66,53 @@
 
     // ── STORAGE ────────────────────────────────────────────────
 
-    function saveData() {
-      localStorage.setItem('bhave_students', JSON.stringify(state.students));
-      localStorage.setItem('bhave_behaviors', JSON.stringify(state.behaviors));
-      localStorage.setItem('bhave_records', JSON.stringify(state.records));
-    }
+    async function loadData() {
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
 
-    function loadData() {
-      try {
-        var s = localStorage.getItem('bhave_students');
-        var b = localStorage.getItem('bhave_behaviors');
-        var r = localStorage.getItem('bhave_records');
-        if (s) state.students = JSON.parse(s);
-        if (b) state.behaviors = JSON.parse(b);
-        if (r) state.records = JSON.parse(r);
-      } catch (e) {
-        console.error('Failed to load stored data. Using default values. Error:', e);
-      }
-    }
+    state.records = {};
 
+    data.forEach(row => {
+      if (!row[0]) return;
+
+      const date = row[0];
+      const student = row[1];
+      const time = parseInt(row[2]);
+      const behavior = row[3];
+      const count = parseInt(row[4]);
+
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][time]) state.records[date][student][time] = {};
+
+      state.records[date][student][time][behavior] = count;
+    });
+
+  } catch (err) {
+    console.error("Failed to load data", err);
+  }
+}
+
+async function saveDataEntry(date, student, minutes, behavior, count) {
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        date,
+        student,
+        time: minutes,
+        behavior,
+        count
+      })
+    });
+  } catch (err) {
+    console.error("Failed to save data", err);
+  }
+}
     // ── TIME SLOTS ─────────────────────────────────────────────
 
     function generateTimeSlots() {
@@ -121,23 +150,28 @@
       return t[behavior] || 0;
     }
 
-    function setCount(date, student, minutes, behavior, value) {
-      if (!state.records[date]) state.records[date] = {};
-      if (!state.records[date][student]) state.records[date][student] = {};
-      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
-      state.records[date][student][minutes][behavior] = value;
-      saveData();
-    }
+ function setCount(date, student, minutes, behavior, value) {
+  if (!state.records[date]) state.records[date] = {};
+  if (!state.records[date][student]) state.records[date][student] = {};
+  if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+
+  state.records[date][student][minutes][behavior] = value;
+
+  // Send update to Google Sheets
+  saveDataEntry(date, student, minutes, behavior, value);
+}
 
     // ── APP INIT ───────────────────────────────────────────────
 
-    function initApp() {
-      loadData();
-      if (state.students.length > 0 && !state.selectedStudent) {
-        state.selectedStudent = state.students[0];
-      }
-      renderApp();
-    }
+    async function initApp() {
+  await loadData();
+
+  if (state.students.length > 0 && !state.selectedStudent) {
+    state.selectedStudent = state.students[0];
+  }
+
+  renderApp();
+}
 
     // ── FULL APP RENDER ────────────────────────────────────────
 
@@ -569,7 +603,7 @@
       }
       state.students.push(name);
       if (!state.selectedStudent) state.selectedStudent = name;
-      saveData();
+      
       renderApp();
     }
 
@@ -578,7 +612,7 @@
       if (state.selectedStudent === name) {
         state.selectedStudent = state.students.length > 0 ? state.students[0] : '';
       }
-      saveData();
+      
       renderApp();
     }
 
@@ -592,13 +626,13 @@
         return;
       }
       state.behaviors.push(name);
-      saveData();
+      
       renderPage();
     }
 
     function removeBehavior(name) {
       state.behaviors = state.behaviors.filter(function (b) { return b !== name; });
-      saveData();
+      
       renderPage();
     }
 
@@ -606,7 +640,7 @@
       if (!confirm('Clear all recorded behavior data for all students and dates? This action cannot be undone.')) return;
       state.records = {};
       state.expandedHours = {};
-      saveData();
+      
       renderApp();
     }
 
