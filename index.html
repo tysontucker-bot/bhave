@@ -430,9 +430,9 @@ var cols = behaviors.map(function (bObj) {
   var sA = escAttr(student);
   var bA = escAttr(behaviorName);
 
-  var displayValue = type === "duration"
-    (count ? (count.toFixed(1) + " min") : "0.0 min")
-    : count;
+   var displayValue = type === "duration"
+     ? (count ? (count.toFixed(1) + " min") : "0.0 min")
+     : count;
 
   return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
     + '<span class="text-xs text-gray-500 text-center truncate w-16">'
