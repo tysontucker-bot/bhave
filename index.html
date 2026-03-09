@@ -166,6 +166,8 @@ students: [
       const time = Number(row[2]);
       const behavior = String(row[3]).trim();
       const count = Number(row[4]);
+      const antecedent = row.length > 5 ? String(row[5]).trim() : '';
+      const consequence = row.length > 6 ? String(row[6]).trim() : '';
 
       if (!date || !student || !behavior || isNaN(time) || isNaN(count)) return;
 
@@ -173,7 +175,7 @@ students: [
       if (!state.records[date][student]) state.records[date][student] = {};
       if (!state.records[date][student][time]) state.records[date][student][time] = {};
 
-      state.records[date][student][time][behavior] = count;
+      state.records[date][student][time][behavior] = { count, antecedent, consequence };
     });
 
   } catch (err) {
@@ -181,7 +183,7 @@ students: [
   }
 }
 
-async function saveDataEntry(date, student, minutes, behavior, count) {
+async function saveDataEntry(date, student, minutes, behavior, count, antecedent, consequence) {
   try {
     await fetch(API_URL, {
       method: "POST",
@@ -192,7 +194,9 @@ async function saveDataEntry(date, student, minutes, behavior, count) {
         student,
         time: minutes,
         behavior,
-        count
+        count,
+        antecedent: antecedent || '',
+        consequence: consequence || ''
       })
     });
   } catch (err) {
@@ -233,19 +237,77 @@ async function saveDataEntry(date, student, minutes, behavior, count) {
       if (!s) return 0;
       var t = s[minutes];
       if (!t) return 0;
-      return t[behavior] || 0;
+      var entry = t[behavior];
+      if (!entry) return 0;
+      if (typeof entry === 'object') return entry.count || 0;
+      return entry || 0;
     }
 
- function setCount(date, student, minutes, behavior, value) {
-  if (!state.records[date]) state.records[date] = {};
-  if (!state.records[date][student]) state.records[date][student] = {};
-  if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+    function getAntecedent(date, student, minutes, behavior) {
+      var d = state.records[date];
+      if (!d) return '';
+      var s = d[student];
+      if (!s) return '';
+      var t = s[minutes];
+      if (!t) return '';
+      var entry = t[behavior];
+      if (!entry || typeof entry !== 'object') return '';
+      return entry.antecedent || '';
+    }
 
-  state.records[date][student][minutes][behavior] = value;
+    function getConsequence(date, student, minutes, behavior) {
+      var d = state.records[date];
+      if (!d) return '';
+      var s = d[student];
+      if (!s) return '';
+      var t = s[minutes];
+      if (!t) return '';
+      var entry = t[behavior];
+      if (!entry || typeof entry !== 'object') return '';
+      return entry.consequence || '';
+    }
 
-  // Send update to Google Sheets
-  saveDataEntry(date, student, minutes, behavior, value);
-}
+    function setCount(date, student, minutes, behavior, value) {
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+
+      var existing = state.records[date][student][minutes][behavior];
+      var antecedent = (existing && typeof existing === 'object') ? (existing.antecedent || '') : '';
+      var consequence = (existing && typeof existing === 'object') ? (existing.consequence || '') : '';
+
+      state.records[date][student][minutes][behavior] = { count: value, antecedent: antecedent, consequence: consequence };
+
+      saveDataEntry(date, student, minutes, behavior, value, antecedent, consequence);
+    }
+
+    function setAntecedent(date, student, minutes, behavior, value) {
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+
+      var existing = state.records[date][student][minutes][behavior];
+      var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
+      var consequence = (existing && typeof existing === 'object') ? (existing.consequence || '') : '';
+
+      state.records[date][student][minutes][behavior] = { count: count, antecedent: value, consequence: consequence };
+
+      saveDataEntry(date, student, minutes, behavior, count, value, consequence);
+    }
+
+    function setConsequence(date, student, minutes, behavior, value) {
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+
+      var existing = state.records[date][student][minutes][behavior];
+      var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
+      var antecedent = (existing && typeof existing === 'object') ? (existing.antecedent || '') : '';
+
+      state.records[date][student][minutes][behavior] = { count: count, antecedent: antecedent, consequence: value };
+
+      saveDataEntry(date, student, minutes, behavior, count, antecedent, value);
+    }
 
     // ── APP INIT ───────────────────────────────────────────────
 
@@ -259,7 +321,7 @@ async function initApp() {
   }
 
   if (state.students.length > 0 && !state.selectedStudent) {
-    state.selectedStudent = state.students[0];
+    state.selectedStudent = state.students[0].name;
   }
 
   renderApp();
@@ -434,6 +496,9 @@ var cols = behaviors.map(function (bObj) {
      ? (count ? (count.toFixed(1) + " min") : "0.0 min")
      : count;
 
+  var antecedent = getAntecedent(date, student, m, behaviorName);
+  var consequence = getConsequence(date, student, m, behaviorName);
+
   return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
     + '<span class="text-xs text-gray-500 text-center truncate w-16">'
     + escHtml(behaviorName)
@@ -453,6 +518,14 @@ var cols = behaviors.map(function (bObj) {
     + '+'
     + '</button>'
     + '</div>'
+    + '<input type="text" placeholder="Antecedent"'
+    + ' class="mt-1 w-16 text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-600 text-center"'
+    + ' value="' + escHtml(antecedent) + '"'
+    + ' onblur="setAntecedent(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',this.value)">'
+    + '<input type="text" placeholder="Consequence"'
+    + ' class="mt-0.5 w-16 text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-600 text-center"'
+    + ' value="' + escHtml(consequence) + '"'
+    + ' onblur="setConsequence(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',this.value)">'
     + '</div>';
 }).join('');
 
@@ -524,7 +597,8 @@ function buildSummaryPage() {
   Object.keys(dayData).forEach(function (ts) {
     var slotData = dayData[ts];
     Object.keys(slotData).forEach(function (b) {
-      var n = slotData[b] || 0;
+      var entry = slotData[b];
+      var n = (entry && typeof entry === 'object') ? (entry.count || 0) : (entry || 0);
       total += n;
       if (behaviorTotals.hasOwnProperty(b)) {
         behaviorTotals[b] += n;
@@ -619,7 +693,8 @@ function buildSummaryPage() {
       var total = 0;
       Object.keys(dayData).forEach(function (ts) {
         Object.keys(dayData[ts]).forEach(function (b) {
-          total += dayData[ts][b] || 0;
+          var entry = dayData[ts][b];
+          total += (entry && typeof entry === 'object') ? (entry.count || 0) : (entry || 0);
         });
       });
       return total;
