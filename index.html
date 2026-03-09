@@ -59,8 +59,93 @@
       selectedDate: todayStr(),
       trendsMode: 'weekly',
       expandedHours: {},
-      students: ['Alice', 'Bob', 'Charlie'],
-      behaviors: ['Talking Out', 'Out of Seat', 'Aggression'],
+students: [
+  {
+    name: "Audrina",
+    behaviors: [
+      { name: "Yelling", type: "frequency" },
+      { name: "Kicking", type: "frequency" },
+      { name: "Hitting", type: "frequency" },
+      { name: "Scratching", type: "frequency" },
+      { name: "Spitting/Biting", type: "frequency" },
+      { name: "Throwing", type: "frequency" },
+      { name: "SIB", type: "duration" },
+      { name: "Swearing", type: "frequency" },
+      { name: "Stripping", type: "frequency" }
+    ]
+  },
+  {
+    name: "Ronan",
+    behaviors: [
+      { name: "Yelling", type: "frequency" },
+      { name: "Crying", type: "duration" },
+      { name: "SIB", type: "duration" },
+      { name: "Scratching", type: "frequency" },
+      { name: "Biting", type: "frequency" },
+      { name: "Head Butting", type: "frequency" }
+    ]
+  },
+  {
+    name: "Finnley",
+    behaviors: [
+      { name: "Yelling", type: "frequency" },
+      { name: "Hitting", type: "frequency" },
+      { name: "Kicking", type: "frequency" },
+      { name: "Scratching", type: "frequency" },
+      { name: "Biting", type: "frequency" },
+      { name: "Throwing", type: "frequency" },
+      { name: "Eloping", type: "frequency" },
+      { name: "SIB", type: "duration" }
+    ]
+  },
+  {
+    name: "Jacob",
+    behaviors: [
+      { name: "Hitting", type: "frequency" },
+      { name: "Crying", type: "duration" },
+      { name: "Biting", type: "frequency" },
+      { name: "Throwing", type: "frequency" },
+      { name: "Spitting", type: "frequency" },
+      { name: "Vomiting", type: "frequency" },
+      { name: "Urinating", type: "frequency" },
+      { name: "Climbing", type: "frequency" },
+      { name: "Disrobing", type: "frequency" },
+      { name: "Scratching", type: "frequency" }
+    ]
+  },
+  {
+    name: "Caleb",
+    behaviors: [
+      { name: "Yelling", type: "frequency" },
+      { name: "Hitting", type: "frequency" },
+      { name: "Kicking", type: "frequency" },
+      { name: "Property Destruction", type: "frequency" },
+      { name: "Exposing", type: "frequency" }
+    ]
+  },
+  {
+    name: "Jaxon",
+    behaviors: [
+      { name: "Hitting", type: "frequency" },
+      { name: "Kicking Objects", type: "frequency" },
+      { name: "Pinching", type: "frequency" },
+      { name: "Grabbing Clothing", type: "duration" },
+      { name: "Biting", type: "frequency" },
+      { name: "Climbing Furniture", type: "frequency" },
+      { name: "SIB", type: "duration" }
+    ]
+  },
+  {
+    name: "Ayden",
+    behaviors: [
+      { name: "Eloping", type: "frequency" },
+      { name: "Property Disruption (Trash)", type: "frequency" },
+      { name: "Property Disruption (Floor)", type: "frequency" },
+      { name: "Pushing", type: "frequency" },
+      { name: "Property Destruction", type: "frequency" }
+    ]
+  }
+],
       records: {}
     };
 
@@ -208,13 +293,14 @@ async function initApp() {
     // ── HEADER ─────────────────────────────────────────────────
 
     function buildHeader() {
-      var chips = state.students.map(function (s) {
-        var isActive = s === state.selectedStudent;
+     var chips = state.students.map(function (sObj) {
+      var name = sObj.name;
+      var isActive = name === state.selectedStudent;
         var cls = isActive
           ? 'flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-blue-600'
           : 'flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium bg-blue-500 text-white hover:bg-blue-400';
-        return '<button class="' + cls + '" onclick="selectStudent(\'' + escAttr(s) + '\')">'
-          + escHtml(s)
+        return '<button class="' + cls + '" onclick="selectStudent(\'' + escAttr(name) + '\')">'
+          + escHtml(name)
           + '</button>';
       }).join('');
 
@@ -287,12 +373,21 @@ async function initApp() {
     function buildHourSection(hour, slots) {
       var isOpen = !!state.expandedHours[hour];
 
-      var hourTotal = 0;
-      slots.forEach(function (slot) {
-        state.behaviors.forEach(function (b) {
-          hourTotal += getCount(state.selectedDate, state.selectedStudent, slot.minutes, b);
-        });
-      });
+var hourTotal = 0;
+
+const studentObj = state.students.find(s => s.name === state.selectedStudent);
+const behaviors = studentObj ? studentObj.behaviors : [];
+
+slots.forEach(function (slot) {
+  behaviors.forEach(function (bObj) {
+    hourTotal += getCount(
+      state.selectedDate,
+      state.selectedStudent,
+      slot.minutes,
+      bObj.name
+    );
+  });
+});
 
       var badge = hourTotal > 0
         ? '<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs'
@@ -323,32 +418,43 @@ async function initApp() {
       var student = state.selectedStudent;
       var m = slot.minutes;
 
-      var cols = state.behaviors.map(function (b) {
-        var count = getCount(date, student, m, b);
-        var dA = escAttr(date);
-        var sA = escAttr(student);
-        var bA = escAttr(b);
-        return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
-          + '<span class="text-xs text-gray-500 text-center truncate w-14">'
-          + escHtml(b)
-          + '</span>'
-          + '<div class="flex items-center gap-1">'
-          + '<button class="w-7 h-7 flex items-center justify-center rounded bg-gray-200'
-          + ' text-gray-700 font-bold hover:bg-gray-300 text-base leading-none"'
-          + ' onclick="decr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
-          + '&#8722;'
-          + '</button>'
-          + '<span class="w-6 text-center text-sm font-semibold tabular-nums">'
-          + count
-          + '</span>'
-          + '<button class="w-7 h-7 flex items-center justify-center rounded bg-blue-500'
-          + ' text-white font-bold hover:bg-blue-600 text-base leading-none"'
-          + ' onclick="incr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
-          + '+'
-          + '</button>'
-          + '</div>'
-          + '</div>';
-      }).join('');
+const studentObj = state.students.find(s => s.name === student);
+const behaviors = studentObj ? studentObj.behaviors : [];
+
+var cols = behaviors.map(function (bObj) {
+  var behaviorName = bObj.name;
+  var type = bObj.type;
+
+  var count = getCount(date, student, m, behaviorName);
+  var dA = escAttr(date);
+  var sA = escAttr(student);
+  var bA = escAttr(behaviorName);
+
+  var displayValue = type === "duration"
+    (count ? (count.toFixed(1) + " min") : "0.0 min")
+    : count;
+
+  return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
+    + '<span class="text-xs text-gray-500 text-center truncate w-16">'
+    + escHtml(behaviorName)
+    + '</span>'
+    + '<div class="flex items-center gap-1">'
+    + '<button class="w-7 h-7 flex items-center justify-center rounded bg-gray-200'
+    + ' text-gray-700 font-bold hover:bg-gray-300 text-base leading-none"'
+    + ' onclick="decr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
+    + '&#8722;'
+    + '</button>'
+    + '<span class="w-10 text-center text-sm font-semibold tabular-nums">'
+    + displayValue
+    + '</span>'
+    + '<button class="w-7 h-7 flex items-center justify-center rounded bg-blue-500'
+    + ' text-white font-bold hover:bg-blue-600 text-base leading-none"'
+    + ' onclick="incr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\', \'' + type + '\')">'
+    + '+'
+    + '</button>'
+    + '</div>'
+    + '</div>';
+}).join('');
 
       return '<div class="px-4 py-2">'
         + '<div class="text-xs text-gray-400 mb-1.5">' + slot.label + '</div>'
@@ -361,82 +467,107 @@ async function initApp() {
       renderPage();
     }
 
-    function incr(date, student, minutes, behavior) {
-      var cur = getCount(date, student, minutes, behavior);
-      setCount(date, student, minutes, behavior, cur + 1);
-      renderPage();
-    }
+function incr(date, student, minutes, behavior, type) {
+  var cur = getCount(date, student, minutes, behavior);
 
-    function decr(date, student, minutes, behavior) {
-      var cur = getCount(date, student, minutes, behavior);
-      if (cur > 0) setCount(date, student, minutes, behavior, cur - 1);
-      renderPage();
+  if (type === "duration") {
+    cur += 0.5; // 30 seconds = 0.5 minutes
+  } else {
+    cur += 1;
+  }
+
+  setCount(date, student, minutes, behavior, cur);
+  renderPage();
+}
+
+function decr(date, student, minutes, behavior) {
+  var cur = getCount(date, student, minutes, behavior);
+
+  if (cur > 0) {
+    if (cur <= 0.5) {
+      cur = 0;
+    } else {
+      cur -= 0.5;
     }
+  }
+
+  setCount(date, student, minutes, behavior, cur);
+  renderPage();
+}
 
     // ── SUMMARY PAGE ───────────────────────────────────────────
 
-    function renderSummary() {
-      var content = document.getElementById('content');
-      if (content) content.innerHTML = buildSummaryPage();
-    }
+function renderSummary() {
+  var content = document.getElementById('content');
+  if (content) content.innerHTML = buildSummaryPage();
+}
 
-    function buildSummaryPage() {
-      var date = state.selectedDate;
-      var student = state.selectedStudent;
-      if (!student) {
-        return '<p class="text-center text-gray-400 mt-8 text-sm">No student selected.</p>';
+function buildSummaryPage() {
+  var date = state.selectedDate;
+  var student = state.selectedStudent;
+
+  if (!student) {
+    return '<p class="text-center text-gray-400 mt-8 text-sm">No student selected.</p>';
+  }
+
+  var dayData = (state.records[date] && state.records[date][student]) || {};
+  var behaviorTotals = {};
+  var total = 0;
+
+  const studentObj = state.students.find(s => s.name === student);
+  const behaviors = studentObj ? studentObj.behaviors : [];
+
+  behaviors.forEach(function (bObj) {
+    behaviorTotals[bObj.name] = 0;
+  });
+
+  Object.keys(dayData).forEach(function (ts) {
+    var slotData = dayData[ts];
+    Object.keys(slotData).forEach(function (b) {
+      var n = slotData[b] || 0;
+      total += n;
+      if (behaviorTotals.hasOwnProperty(b)) {
+        behaviorTotals[b] += n;
       }
+    });
+  });
 
-      var dayData = (state.records[date] && state.records[date][student]) || {};
-      var behaviorTotals = {};
-      state.behaviors.forEach(function (b) { behaviorTotals[b] = 0; });
-      var total = 0;
+  var rows = behaviors.map(function (bObj) {
+    var b = bObj.name;
+    var count = behaviorTotals[b] || 0;
+    var pct = total > 0 ? Math.round((count / total) * 100) : 0;
 
-      Object.keys(dayData).forEach(function (ts) {
-        var slotData = dayData[ts];
-        Object.keys(slotData).forEach(function (b) {
-          var n = slotData[b] || 0;
-          total += n;
-          if (Object.prototype.hasOwnProperty.call(behaviorTotals, b)) {
-            behaviorTotals[b] += n;
-          }
-        });
-      });
+    return '<div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">'
+      + '<span class="text-sm font-medium text-gray-700 flex-1 mr-4 truncate">'
+      + escHtml(b)
+      + '</span>'
+      + '<div class="flex items-center gap-2 flex-shrink-0">'
+      + '<div class="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">'
+      + '<div class="h-2 rounded-full bg-blue-500" style="width:' + pct + '%"></div>'
+      + '</div>'
+      + '<span class="text-sm font-bold text-gray-800 w-8 text-right tabular-nums">'
+      + count
+      + '</span>'
+      + '</div>'
+      + '</div>';
+  }).join('');
 
-      var rows = state.behaviors.map(function (b) {
-        var count = behaviorTotals[b];
-        var pct = total > 0 ? Math.round((count / total) * 100) : 0;
-        return '<div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">'
-          + '<span class="text-sm font-medium text-gray-700 flex-1 mr-4 truncate">'
-          + escHtml(b)
-          + '</span>'
-          + '<div class="flex items-center gap-2 flex-shrink-0">'
-          + '<div class="w-24 bg-gray-200 rounded-full h-2 overflow-hidden">'
-          + '<div class="h-2 rounded-full bg-blue-500" style="width:' + pct + '%"></div>'
-          + '</div>'
-          + '<span class="text-sm font-bold text-gray-800 w-5 text-right tabular-nums">'
-          + count
-          + '</span>'
-          + '</div>'
-          + '</div>';
-      }).join('');
-
-      return '<div class="mt-2 space-y-4">'
-        + '<div class="rounded-xl bg-blue-50 p-6 text-center">'
-        + '<div class="text-5xl font-bold text-blue-700">' + total + '</div>'
-        + '<div class="text-sm text-blue-500 mt-1 font-medium">Total Incidents</div>'
-        + '<div class="text-xs text-gray-400 mt-1">'
-        + escHtml(student) + ' &bull; ' + formatDate(date)
-        + '</div>'
-        + '</div>'
-        + '<div class="bg-white rounded-lg border border-gray-200 px-4">'
-        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">'
-        + 'Behavior Breakdown'
-        + '</h2>'
-        + rows
-        + '</div>'
-        + '</div>';
-    }
+  return '<div class="mt-2 space-y-4">'
+    + '<div class="rounded-xl bg-blue-50 p-6 text-center">'
+    + '<div class="text-5xl font-bold text-blue-700">' + total + '</div>'
+    + '<div class="text-sm text-blue-500 mt-1 font-medium">Total Incidents</div>'
+    + '<div class="text-xs text-gray-400 mt-1">'
+    + escHtml(student) + ' &bull; ' + formatDate(date)
+    + '</div>'
+    + '</div>'
+    + '<div class="bg-white rounded-lg border border-gray-200 px-4">'
+    + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">'
+    + 'Behavior Breakdown'
+    + '</h2>'
+    + rows
+    + '</div>'
+    + '</div>';
+}
 
     // ── TRENDS PAGE ────────────────────────────────────────────
 
@@ -537,111 +668,79 @@ async function initApp() {
       if (content) content.innerHTML = buildSettingsPage();
     }
 
-    function buildSettingsPage() {
-      var studentItems = state.students.length > 0
-        ? state.students.map(function (s) {
-            return '<div class="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">'
-              + '<span class="text-sm text-gray-700">' + escHtml(s) + '</span>'
-              + '<button class="text-xs text-red-500 hover:text-red-700 font-medium"'
-              + ' onclick="removeStudent(\'' + escAttr(s) + '\')">Remove</button>'
-              + '</div>';
-          }).join('')
-        : '<p class="text-xs text-gray-400 py-2 italic">No students added yet.</p>';
+function buildSettingsPage() {
+  var studentItems = state.students.length > 0
+    ? state.students.map(function (s) {
+        return '<div class="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">'
+          + '<span class="text-sm text-gray-700">' + escHtml(s.name) + '</span>'
+          + '</div>';
+      }).join('')
+    : '<p class="text-xs text-gray-400 py-2 italic">No students added yet.</p>';
 
-      var behaviorItems = state.behaviors.length > 0
-        ? state.behaviors.map(function (b) {
-            return '<div class="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">'
-              + '<span class="text-sm text-gray-700">' + escHtml(b) + '</span>'
-              + '<button class="text-xs text-red-500 hover:text-red-700 font-medium"'
-              + ' onclick="removeBehavior(\'' + escAttr(b) + '\')">Remove</button>'
-              + '</div>';
-          }).join('')
-        : '<p class="text-xs text-gray-400 py-2 italic">No behaviors added yet.</p>';
+  return '<div class="mt-2 space-y-4 pb-4">'
+    + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+    + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Date</h2>'
+    + '<input type="date" value="' + state.selectedDate + '"'
+    + ' class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"'
+    + ' onchange="changeDate(this.value)">'
+    + '</div>'
+    + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+    + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Students</h2>'
+    + studentItems
+    + '</div>'
+    + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+    + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Behaviors</h2>'
+    + '<p class="text-xs text-gray-400 italic">Behaviors are configured per student.</p>'
+    + '</div>'
+    + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
+    + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Data</h2>'
+    + '<p class="text-xs text-gray-400 mb-3">Permanently removes all recorded behavior data.</p>'
+    + '<button class="w-full py-2.5 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"'
+    + ' onclick="clearAllData()">Clear All Data</button>'
+    + '</div>'
+    + '</div>';
+}
 
-      return '<div class="mt-2 space-y-4 pb-4">'
-        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
-        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Date</h2>'
-        + '<input type="date" value="' + state.selectedDate + '"'
-        + ' class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"'
-        + ' onchange="changeDate(this.value)">'
-        + '</div>'
-        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
-        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Students</h2>'
-        + studentItems
-        + '<div class="flex gap-2 mt-3">'
-        + '<input type="text" id="newStudentInput" placeholder="Student name"'
-        + ' class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">'
-        + '<button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"'
-        + ' onclick="addStudent()">Add</button>'
-        + '</div>'
-        + '</div>'
-        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
-        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Behaviors</h2>'
-        + behaviorItems
-        + '<div class="flex gap-2 mt-3">'
-        + '<input type="text" id="newBehaviorInput" placeholder="Behavior name"'
-        + ' class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">'
-        + '<button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"'
-        + ' onclick="addBehavior()">Add</button>'
-        + '</div>'
-        + '</div>'
-        + '<div class="bg-white rounded-lg border border-gray-200 p-4">'
-        + '<h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Data</h2>'
-        + '<p class="text-xs text-gray-400 mb-3">Permanently removes all recorded behavior data.</p>'
-        + '<button class="w-full py-2.5 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600"'
-        + ' onclick="clearAllData()">Clear All Data</button>'
-        + '</div>'
-        + '</div>';
-    }
 
     function changeDate(value) {
       state.selectedDate = value;
       renderApp();
     }
 
-    function addStudent() {
-      var input = document.getElementById('newStudentInput');
-      if (!input) return;
-      var name = input.value.trim();
-      if (!name) return;
-      if (state.students.indexOf(name) !== -1) {
-        alert('A student with that name already exists. Please choose a different name.');
-        return;
-      }
-      state.students.push(name);
-      if (!state.selectedStudent) state.selectedStudent = name;
-      
-      renderApp();
-    }
+function addStudent() {
+  var input = document.getElementById('newStudentInput');
+  if (!input) return;
 
-    function removeStudent(name) {
-      state.students = state.students.filter(function (s) { return s !== name; });
-      if (state.selectedStudent === name) {
-        state.selectedStudent = state.students.length > 0 ? state.students[0] : '';
-      }
-      
-      renderApp();
-    }
+  var name = input.value.trim();
+  if (!name) return;
 
-    function addBehavior() {
-      var input = document.getElementById('newBehaviorInput');
-      if (!input) return;
-      var name = input.value.trim();
-      if (!name) return;
-      if (state.behaviors.indexOf(name) !== -1) {
-        alert('A behavior with that name already exists. Please choose a different name.');
-        return;
-      }
-      state.behaviors.push(name);
-      
-      renderPage();
-    }
+  if (state.students.some(function (s) { return s.name === name; })) {
+    alert('A student with that name already exists.');
+    return;
+  }
 
-    function removeBehavior(name) {
-      state.behaviors = state.behaviors.filter(function (b) { return b !== name; });
-      
-      renderPage();
-    }
+  state.students.push({
+    name: name,
+    behaviors: []
+  });
+
+  if (!state.selectedStudent) state.selectedStudent = name;
+
+  renderApp();
+}
+
+function removeStudent(name) {
+  state.students = state.students.filter(function (s) {
+    return s.name !== name;
+  });
+
+  if (state.selectedStudent === name) {
+    state.selectedStudent = state.students.length > 0 ? state.students[0].name : '';
+  }
+
+  renderApp();
+}
+
 
     function clearAllData() {
       if (!confirm('Clear all recorded behavior data for all students and dates? This action cannot be undone.')) return;
