@@ -11,6 +11,25 @@
 
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbxyVvnKO6smZ2isi2MlNUAMvtoRgzroH-pkLAxpE2mPKRIdOyyS24uY7IaMqPe6L26XZw/exec";
+
+    const ANTECEDENT_OPTIONS = [
+      "Demand",
+      "Transition",
+      "Denied Item",
+      "Attention Removed",
+      "Peer Interaction",
+      "Unstructured Time"
+    ];
+
+    const CONSEQUENCE_OPTIONS = [
+      "Redirected",
+      "Ignored",
+      "Removed from Area",
+      "Loss of Privilege",
+      "Given Break",
+      "Staff Support"
+    ];
+
     // ── UTILITIES ──────────────────────────────────────────────
 
     function todayStr() {
@@ -166,8 +185,28 @@ students: [
       const time = Number(row[2]);
       const behavior = String(row[3]).trim();
       const count = Number(row[4]);
-      const antecedent = row.length > 5 ? String(row[5]).trim() : '';
-      const consequence = row.length > 6 ? String(row[6]).trim() : '';
+
+      let antecedents = [];
+      if (row.length > 5 && row[5] !== '' && row[5] !== null && row[5] !== undefined) {
+        const raw = String(row[5]).trim();
+        try {
+          const parsed = JSON.parse(raw);
+          antecedents = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          antecedents = raw ? [raw] : [];
+        }
+      }
+
+      let consequences = [];
+      if (row.length > 6 && row[6] !== '' && row[6] !== null && row[6] !== undefined) {
+        const raw = String(row[6]).trim();
+        try {
+          const parsed = JSON.parse(raw);
+          consequences = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          consequences = raw ? [raw] : [];
+        }
+      }
 
       if (!date || !student || !behavior || isNaN(time) || isNaN(count)) return;
 
@@ -175,7 +214,7 @@ students: [
       if (!state.records[date][student]) state.records[date][student] = {};
       if (!state.records[date][student][time]) state.records[date][student][time] = {};
 
-      state.records[date][student][time][behavior] = { count, antecedent, consequence };
+      state.records[date][student][time][behavior] = { count, antecedents, consequences };
     });
 
   } catch (err) {
@@ -183,7 +222,7 @@ students: [
   }
 }
 
-async function saveDataEntry(date, student, minutes, behavior, count, antecedent, consequence) {
+async function saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences) {
   try {
     await fetch(API_URL, {
       method: "POST",
@@ -195,8 +234,8 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
         time: minutes,
         behavior,
         count,
-        antecedent: antecedent || '',
-        consequence: consequence || ''
+        antecedent: JSON.stringify(antecedents || []),
+        consequence: JSON.stringify(consequences || [])
       })
     });
   } catch (err) {
@@ -243,28 +282,28 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       return entry || 0;
     }
 
-    function getAntecedent(date, student, minutes, behavior) {
+    function getAntecedents(date, student, minutes, behavior) {
       var d = state.records[date];
-      if (!d) return '';
+      if (!d) return [];
       var s = d[student];
-      if (!s) return '';
+      if (!s) return [];
       var t = s[minutes];
-      if (!t) return '';
+      if (!t) return [];
       var entry = t[behavior];
-      if (!entry || typeof entry !== 'object') return '';
-      return entry.antecedent || '';
+      if (!entry || typeof entry !== 'object') return [];
+      return Array.isArray(entry.antecedents) ? entry.antecedents : [];
     }
 
-    function getConsequence(date, student, minutes, behavior) {
+    function getConsequences(date, student, minutes, behavior) {
       var d = state.records[date];
-      if (!d) return '';
+      if (!d) return [];
       var s = d[student];
-      if (!s) return '';
+      if (!s) return [];
       var t = s[minutes];
-      if (!t) return '';
+      if (!t) return [];
       var entry = t[behavior];
-      if (!entry || typeof entry !== 'object') return '';
-      return entry.consequence || '';
+      if (!entry || typeof entry !== 'object') return [];
+      return Array.isArray(entry.consequences) ? entry.consequences : [];
     }
 
     function setCount(date, student, minutes, behavior, value) {
@@ -273,40 +312,56 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
 
       var existing = state.records[date][student][minutes][behavior];
-      var antecedent = (existing && typeof existing === 'object') ? (existing.antecedent || '') : '';
-      var consequence = (existing && typeof existing === 'object') ? (existing.consequence || '') : '';
+      var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents : []) : [];
+      var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences : []) : [];
 
-      state.records[date][student][minutes][behavior] = { count: value, antecedent: antecedent, consequence: consequence };
+      state.records[date][student][minutes][behavior] = { count: value, antecedents: antecedents, consequences: consequences };
 
-      saveDataEntry(date, student, minutes, behavior, value, antecedent, consequence);
+      saveDataEntry(date, student, minutes, behavior, value, antecedents, consequences);
     }
 
-    function setAntecedent(date, student, minutes, behavior, value) {
+    function toggleAntecedent(date, student, minutes, behavior, option) {
       if (!state.records[date]) state.records[date] = {};
       if (!state.records[date][student]) state.records[date][student] = {};
       if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
 
       var existing = state.records[date][student][minutes][behavior];
       var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
-      var consequence = (existing && typeof existing === 'object') ? (existing.consequence || '') : '';
+      var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences.slice() : []) : [];
+      var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents.slice() : []) : [];
 
-      state.records[date][student][minutes][behavior] = { count: count, antecedent: value, consequence: consequence };
+      var idx = antecedents.indexOf(option);
+      if (idx === -1) {
+        antecedents.push(option);
+      } else {
+        antecedents.splice(idx, 1);
+      }
 
-      saveDataEntry(date, student, minutes, behavior, count, value, consequence);
+      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences };
+
+      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences);
     }
 
-    function setConsequence(date, student, minutes, behavior, value) {
+    function toggleConsequence(date, student, minutes, behavior, option) {
       if (!state.records[date]) state.records[date] = {};
       if (!state.records[date][student]) state.records[date][student] = {};
       if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
 
       var existing = state.records[date][student][minutes][behavior];
       var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
-      var antecedent = (existing && typeof existing === 'object') ? (existing.antecedent || '') : '';
+      var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents.slice() : []) : [];
+      var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences.slice() : []) : [];
 
-      state.records[date][student][minutes][behavior] = { count: count, antecedent: antecedent, consequence: value };
+      var idx = consequences.indexOf(option);
+      if (idx === -1) {
+        consequences.push(option);
+      } else {
+        consequences.splice(idx, 1);
+      }
 
-      saveDataEntry(date, student, minutes, behavior, count, antecedent, value);
+      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences };
+
+      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences);
     }
 
     // ── APP INIT ───────────────────────────────────────────────
@@ -496,8 +551,28 @@ var cols = behaviors.map(function (bObj) {
      ? (count ? (count.toFixed(1) + " min") : "0.0 min")
      : count;
 
-  var antecedent = getAntecedent(date, student, m, behaviorName);
-  var consequence = getConsequence(date, student, m, behaviorName);
+  var antecedents = getAntecedents(date, student, m, behaviorName);
+  var consequences = getConsequences(date, student, m, behaviorName);
+
+  var antecedentCheckboxes = ANTECEDENT_OPTIONS.map(function (opt) {
+    var checked = antecedents.indexOf(opt) !== -1 ? ' checked' : '';
+    var oA = escAttr(opt);
+    return '<label class="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">'
+      + '<input type="checkbox"' + checked
+      + ' onchange="toggleAntecedent(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',\'' + oA + '\')">'
+      + escHtml(opt)
+      + '</label>';
+  }).join('');
+
+  var consequenceCheckboxes = CONSEQUENCE_OPTIONS.map(function (opt) {
+    var checked = consequences.indexOf(opt) !== -1 ? ' checked' : '';
+    var oA = escAttr(opt);
+    return '<label class="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">'
+      + '<input type="checkbox"' + checked
+      + ' onchange="toggleConsequence(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',\'' + oA + '\')">'
+      + escHtml(opt)
+      + '</label>';
+  }).join('');
 
   return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
     + '<span class="text-xs text-gray-500 text-center truncate w-16">'
@@ -518,14 +593,14 @@ var cols = behaviors.map(function (bObj) {
     + '+'
     + '</button>'
     + '</div>'
-    + '<input type="text" placeholder="Antecedent"'
-    + ' class="mt-1 w-16 text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-600 text-center"'
-    + ' value="' + escHtml(antecedent) + '"'
-    + ' onblur="setAntecedent(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',this.value)">'
-    + '<input type="text" placeholder="Consequence"'
-    + ' class="mt-0.5 w-16 text-xs border border-gray-200 rounded px-1 py-0.5 text-gray-600 text-center"'
-    + ' value="' + escHtml(consequence) + '"'
-    + ' onblur="setConsequence(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',this.value)">'
+    + '<div class="mt-1 w-full">'
+    + '<span class="text-xs font-semibold text-gray-500">A:</span>'
+    + '<div class="flex flex-col gap-0.5 mt-0.5">' + antecedentCheckboxes + '</div>'
+    + '</div>'
+    + '<div class="mt-1 w-full">'
+    + '<span class="text-xs font-semibold text-gray-500">C:</span>'
+    + '<div class="flex flex-col gap-0.5 mt-0.5">' + consequenceCheckboxes + '</div>'
+    + '</div>'
     + '</div>';
 }).join('');
 
