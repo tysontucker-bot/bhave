@@ -30,6 +30,14 @@
       "Staff Support"
     ];
 
+    const FUNCTION_OPTIONS = [
+      "Escape",
+      "Attention",
+      "Tangible",
+      "Sensory",
+      "Unknown"
+    ];
+
     // ── UTILITIES ──────────────────────────────────────────────
 
     function todayStr() {
@@ -210,13 +218,24 @@ students: [
         }
       }
 
+      let functions = [];
+      if (row.length > 7 && row[7] !== '' && row[7] !== null && row[7] !== undefined) {
+        const raw = String(row[7]).trim();
+        try {
+          const parsed = JSON.parse(raw);
+          functions = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          functions = raw ? [raw] : [];
+        }
+      }
+
       if (!date || !student || !behavior || isNaN(time) || isNaN(count)) return;
 
       if (!state.records[date]) state.records[date] = {};
       if (!state.records[date][student]) state.records[date][student] = {};
       if (!state.records[date][student][time]) state.records[date][student][time] = {};
 
-      state.records[date][student][time][behavior] = { count, antecedents, consequences };
+      state.records[date][student][time][behavior] = { count, antecedents, consequences, functions };
     });
 
   } catch (err) {
@@ -224,7 +243,7 @@ students: [
   }
 }
 
-async function saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences) {
+async function saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences, functions) {
   try {
     await fetch(API_URL, {
       method: "POST",
@@ -237,7 +256,8 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
         behavior,
         count,
         antecedent: JSON.stringify(antecedents || []),
-        consequence: JSON.stringify(consequences || [])
+        consequence: JSON.stringify(consequences || []),
+        function: JSON.stringify(functions || [])
       })
     });
   } catch (err) {
@@ -308,6 +328,18 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       return Array.isArray(entry.consequences) ? entry.consequences : [];
     }
 
+    function getFunctions(date, student, minutes, behavior) {
+      var d = state.records[date];
+      if (!d) return [];
+      var s = d[student];
+      if (!s) return [];
+      var t = s[minutes];
+      if (!t) return [];
+      var entry = t[behavior];
+      if (!entry || typeof entry !== 'object') return [];
+      return Array.isArray(entry.functions) ? entry.functions : [];
+    }
+
     function setCount(date, student, minutes, behavior, value) {
       if (!state.records[date]) state.records[date] = {};
       if (!state.records[date][student]) state.records[date][student] = {};
@@ -316,10 +348,11 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       var existing = state.records[date][student][minutes][behavior];
       var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents : []) : [];
       var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences : []) : [];
+      var functions = (existing && typeof existing === 'object') ? (Array.isArray(existing.functions) ? existing.functions : []) : [];
 
-      state.records[date][student][minutes][behavior] = { count: value, antecedents: antecedents, consequences: consequences };
+      state.records[date][student][minutes][behavior] = { count: value, antecedents: antecedents, consequences: consequences, functions: functions };
 
-      saveDataEntry(date, student, minutes, behavior, value, antecedents, consequences);
+      saveDataEntry(date, student, minutes, behavior, value, antecedents, consequences, functions);
     }
 
     function toggleAntecedent(date, student, minutes, behavior, option) {
@@ -331,6 +364,7 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
       var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences.slice() : []) : [];
       var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents.slice() : []) : [];
+      var functions = (existing && typeof existing === 'object') ? (Array.isArray(existing.functions) ? existing.functions.slice() : []) : [];
 
       var idx = antecedents.indexOf(option);
       if (idx === -1) {
@@ -339,9 +373,9 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
         antecedents.splice(idx, 1);
       }
 
-      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences };
+      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences, functions: functions };
 
-      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences);
+      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences, functions);
     }
 
     function toggleConsequence(date, student, minutes, behavior, option) {
@@ -353,6 +387,7 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
       var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
       var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents.slice() : []) : [];
       var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences.slice() : []) : [];
+      var functions = (existing && typeof existing === 'object') ? (Array.isArray(existing.functions) ? existing.functions.slice() : []) : [];
 
       var idx = consequences.indexOf(option);
       if (idx === -1) {
@@ -361,9 +396,32 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
         consequences.splice(idx, 1);
       }
 
-      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences };
+      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences, functions: functions };
 
-      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences);
+      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences, functions);
+    }
+
+    function toggleFunction(date, student, minutes, behavior, option) {
+      if (!state.records[date]) state.records[date] = {};
+      if (!state.records[date][student]) state.records[date][student] = {};
+      if (!state.records[date][student][minutes]) state.records[date][student][minutes] = {};
+
+      var existing = state.records[date][student][minutes][behavior];
+      var count = (existing && typeof existing === 'object') ? (existing.count || 0) : (existing || 0);
+      var antecedents = (existing && typeof existing === 'object') ? (Array.isArray(existing.antecedents) ? existing.antecedents.slice() : []) : [];
+      var consequences = (existing && typeof existing === 'object') ? (Array.isArray(existing.consequences) ? existing.consequences.slice() : []) : [];
+      var functions = (existing && typeof existing === 'object') ? (Array.isArray(existing.functions) ? existing.functions.slice() : []) : [];
+
+      var idx = functions.indexOf(option);
+      if (idx === -1) {
+        functions.push(option);
+      } else {
+        functions.splice(idx, 1);
+      }
+
+      state.records[date][student][minutes][behavior] = { count: count, antecedents: antecedents, consequences: consequences, functions: functions };
+
+      saveDataEntry(date, student, minutes, behavior, count, antecedents, consequences, functions);
     }
 
     // ── APP INIT ───────────────────────────────────────────────
@@ -549,6 +607,7 @@ slots.forEach(function (slot) {
       var hasNote = !!getNote(date, student, m);
       var hasAnt = getAntecedents(date, student, m, '_slot').length > 0;
       var hasCons = getConsequences(date, student, m, '_slot').length > 0;
+      var hasFuncs = getFunctions(date, student, m, '_slot').length > 0;
 
       var fCls = 'px-2.5 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200';
       var aCls = hasAnt
@@ -556,6 +615,9 @@ slots.forEach(function (slot) {
         : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
       var cCls = hasCons
         ? 'px-2.5 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200'
+        : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
+      var fnCls = hasFuncs
+        ? 'px-2.5 py-1 rounded text-xs font-semibold bg-orange-100 text-orange-700 hover:bg-orange-200'
         : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
       var noteCls = hasNote
         ? 'px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200'
@@ -566,9 +628,10 @@ slots.forEach(function (slot) {
         + badge
         + '<div class="flex-1"></div>'
         + '<div class="flex items-center gap-1.5">'
-        + '<button class="' + aCls + '" onclick="openModal(\'A\',\'' + dA + '\',\'' + sA + '\',' + m + ')">A</button>'
-        + '<button class="' + cCls + '" onclick="openModal(\'C\',\'' + dA + '\',\'' + sA + '\',' + m + ')">C</button>'
-        + '<button class="' + fCls + '" onclick="openModal(\'F\',\'' + dA + '\',\'' + sA + '\',' + m + ')">F</button>'
+        + '<button class="' + aCls + '" aria-label="Antecedents" onclick="openModal(\'A\',\'' + dA + '\',\'' + sA + '\',' + m + ')">A</button>'
+        + '<button class="' + cCls + '" aria-label="Consequences" onclick="openModal(\'C\',\'' + dA + '\',\'' + sA + '\',' + m + ')">C</button>'
+        + '<button class="' + fnCls + '" aria-label="Function of Behavior" onclick="openModal(\'FN\',\'' + dA + '\',\'' + sA + '\',' + m + ')">F</button>'
+        + '<button class="' + fCls + '" aria-label="Frequency and Duration" onclick="openModal(\'F\',\'' + dA + '\',\'' + sA + '\',' + m + ')">&#128203;</button>'
         + '<button class="' + noteCls + '" onclick="openModal(\'notes\',\'' + dA + '\',\'' + sA + '\',' + m + ')">&#9998;</button>'
         + '</div>'
         + '</div>';
@@ -663,7 +726,7 @@ function decr(date, student, minutes, behavior) {
       var minutes = m.minutes;
       var type = m.type;
 
-      var typeLabels = { F: 'Frequency / Duration', A: 'Antecedents', C: 'Consequences', notes: 'Notes' };
+      var typeLabels = { F: 'Frequency / Duration', A: 'Antecedents', C: 'Consequences', FN: 'Function of Behavior', notes: 'Notes' };
       var title = typeLabels[type] || '';
       var timeLabel = minutesToLabel(minutes);
 
@@ -676,6 +739,8 @@ function decr(date, student, minutes, behavior) {
         content = buildAModalContent(date, student, minutes);
       } else if (type === 'C') {
         content = buildCModalContent(date, student, minutes);
+      } else if (type === 'FN') {
+        content = buildFNModalContent(date, student, minutes);
       } else if (type === 'notes') {
         content = buildNotesModalContent(date, student, minutes);
         footer = '<div class="px-4 py-3 border-t border-gray-100 flex-shrink-0 flex gap-2">'
@@ -761,6 +826,22 @@ function decr(date, student, minutes, behavior) {
         return '<label class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 cursor-pointer">'
           + '<input type="checkbox" class="w-4 h-4 accent-blue-600"' + checked
           + ' onchange="toggleConsequence(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'_slot\',\'' + oA + '\')">'
+          + '<span class="text-sm text-gray-700">' + escHtml(opt) + '</span>'
+          + '</label>';
+      }).join('');
+    }
+
+    function buildFNModalContent(date, student, minutes) {
+      var dA = escAttr(date);
+      var sA = escAttr(student);
+      var current = getFunctions(date, student, minutes, '_slot');
+
+      return FUNCTION_OPTIONS.map(function(opt) {
+        var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
+        var oA = escAttr(opt);
+        return '<label class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 cursor-pointer">'
+          + '<input type="checkbox" class="w-4 h-4 accent-blue-600"' + checked
+          + ' onchange="toggleFunction(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'_slot\',\'' + oA + '\')">'
           + '<span class="text-sm text-gray-700">' + escHtml(opt) + '</span>'
           + '</label>';
       }).join('');
