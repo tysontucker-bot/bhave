@@ -78,6 +78,8 @@
       selectedDate: todayStr(),
       trendsMode: 'weekly',
       expandedHours: {},
+      openModal: null,
+      slotNotes: {},
 students: [
   {
     name: "Audrina",
@@ -386,7 +388,8 @@ async function initApp() {
 
     function renderApp() {
       var app = document.getElementById('app');
-      app.innerHTML = buildHeader() + buildMainContent() + buildNav();
+      app.innerHTML = buildHeader() + buildMainContent() + buildNav() + '<div id="modal-overlay"></div>';
+      renderModal();
     }
 
     function buildMainContent() {
@@ -535,78 +538,39 @@ slots.forEach(function (slot) {
       var student = state.selectedStudent;
       var m = slot.minutes;
 
-const studentObj = state.students.find(s => s.name === student);
-const behaviors = studentObj ? studentObj.behaviors : [];
+      var total = getSlotTotal(date, student, m);
+      var badge = total > 0
+        ? '<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">' + total + '</span>'
+        : '<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs text-gray-300 bg-gray-50">0</span>';
 
-var cols = behaviors.map(function (bObj) {
-  var behaviorName = bObj.name;
-  var type = bObj.type;
+      var dA = escAttr(date);
+      var sA = escAttr(student);
 
-  var count = getCount(date, student, m, behaviorName);
-  var dA = escAttr(date);
-  var sA = escAttr(student);
-  var bA = escAttr(behaviorName);
+      var hasNote = !!getNote(date, student, m);
+      var hasAnt = getAntecedents(date, student, m, '_slot').length > 0;
+      var hasCons = getConsequences(date, student, m, '_slot').length > 0;
 
-   var displayValue = type === "duration"
-     ? (count ? (count.toFixed(1) + " min") : "0.0 min")
-     : count;
+      var fCls = 'px-2.5 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200';
+      var aCls = hasAnt
+        ? 'px-2.5 py-1 rounded text-xs font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200'
+        : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
+      var cCls = hasCons
+        ? 'px-2.5 py-1 rounded text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200'
+        : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
+      var noteCls = hasNote
+        ? 'px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200'
+        : 'px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200';
 
-  var antecedents = getAntecedents(date, student, m, behaviorName);
-  var consequences = getConsequences(date, student, m, behaviorName);
-
-  var antecedentCheckboxes = ANTECEDENT_OPTIONS.map(function (opt) {
-    var checked = antecedents.indexOf(opt) !== -1 ? ' checked' : '';
-    var oA = escAttr(opt);
-    return '<label class="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">'
-      + '<input type="checkbox"' + checked
-      + ' onchange="toggleAntecedent(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',\'' + oA + '\')">'
-      + escHtml(opt)
-      + '</label>';
-  }).join('');
-
-  var consequenceCheckboxes = CONSEQUENCE_OPTIONS.map(function (opt) {
-    var checked = consequences.indexOf(opt) !== -1 ? ' checked' : '';
-    var oA = escAttr(opt);
-    return '<label class="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">'
-      + '<input type="checkbox"' + checked
-      + ' onchange="toggleConsequence(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\',\'' + oA + '\')">'
-      + escHtml(opt)
-      + '</label>';
-  }).join('');
-
-  return '<div class="flex flex-col items-center gap-0.5 min-w-0">'
-    + '<span class="text-xs text-gray-500 text-center truncate w-16">'
-    + escHtml(behaviorName)
-    + '</span>'
-    + '<div class="flex items-center gap-1">'
-    + '<button class="w-7 h-7 flex items-center justify-center rounded bg-gray-200'
-    + ' text-gray-700 font-bold hover:bg-gray-300 text-base leading-none"'
-    + ' onclick="decr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\')">'
-    + '&#8722;'
-    + '</button>'
-    + '<span class="w-10 text-center text-sm font-semibold tabular-nums">'
-    + displayValue
-    + '</span>'
-    + '<button class="w-7 h-7 flex items-center justify-center rounded bg-blue-500'
-    + ' text-white font-bold hover:bg-blue-600 text-base leading-none"'
-    + ' onclick="incr(\'' + dA + '\',\'' + sA + '\',' + m + ',\'' + bA + '\', \'' + type + '\')">'
-    + '+'
-    + '</button>'
-    + '</div>'
-    + '<div class="mt-1 w-full">'
-    + '<span class="text-xs font-semibold text-gray-500">A:</span>'
-    + '<div class="flex flex-col gap-0.5 mt-0.5">' + antecedentCheckboxes + '</div>'
-    + '</div>'
-    + '<div class="mt-1 w-full">'
-    + '<span class="text-xs font-semibold text-gray-500">C:</span>'
-    + '<div class="flex flex-col gap-0.5 mt-0.5">' + consequenceCheckboxes + '</div>'
-    + '</div>'
-    + '</div>';
-}).join('');
-
-      return '<div class="px-4 py-2">'
-        + '<div class="text-xs text-gray-400 mb-1.5">' + slot.label + '</div>'
-        + '<div class="flex flex-wrap gap-3">' + cols + '</div>'
+      return '<div class="flex items-center px-3 py-2 gap-2">'
+        + '<span class="text-xs font-medium text-gray-600 w-16 flex-shrink-0">' + escHtml(slot.label) + '</span>'
+        + badge
+        + '<div class="flex-1"></div>'
+        + '<div class="flex items-center gap-1.5">'
+        + '<button class="' + aCls + '" onclick="openModal(\'A\',\'' + dA + '\',\'' + sA + '\',' + m + ')">A</button>'
+        + '<button class="' + cCls + '" onclick="openModal(\'C\',\'' + dA + '\',\'' + sA + '\',' + m + ')">C</button>'
+        + '<button class="' + fCls + '" onclick="openModal(\'F\',\'' + dA + '\',\'' + sA + '\',' + m + ')">F</button>'
+        + '<button class="' + noteCls + '" onclick="openModal(\'notes\',\'' + dA + '\',\'' + sA + '\',' + m + ')">&#9998;</button>'
+        + '</div>'
         + '</div>';
     }
 
@@ -642,6 +606,205 @@ function decr(date, student, minutes, behavior) {
   setCount(date, student, minutes, behavior, cur);
   renderPage();
 }
+
+    // ── SLOT HELPERS ───────────────────────────────────────────
+
+    function getSlotTotal(date, student, minutes) {
+      var studentObj = state.students.find(function(s) { return s.name === student; });
+      var behaviors = studentObj ? studentObj.behaviors : [];
+      var total = 0;
+      behaviors.forEach(function(bObj) {
+        total += getCount(date, student, minutes, bObj.name);
+      });
+      return total;
+    }
+
+    function getNote(date, student, minutes) {
+      var d = state.slotNotes[date];
+      if (!d) return '';
+      var s = d[student];
+      if (!s) return '';
+      return s[minutes] || '';
+    }
+
+    function saveNote(date, student, minutes, text) {
+      if (!state.slotNotes[date]) state.slotNotes[date] = {};
+      if (!state.slotNotes[date][student]) state.slotNotes[date][student] = {};
+      state.slotNotes[date][student][minutes] = text;
+    }
+
+    // ── MODAL MANAGEMENT ───────────────────────────────────────
+
+    function openModal(type, date, student, minutes) {
+      state.openModal = { type: type, date: date, student: student, minutes: minutes };
+      renderModal();
+    }
+
+    function closeModal() {
+      state.openModal = null;
+      renderModal();
+      renderTracker();
+    }
+
+    function handleModalOverlayClick(e) {
+      if (e.target === e.currentTarget) closeModal();
+    }
+
+    function renderModal() {
+      var el = document.getElementById('modal-overlay');
+      if (el) el.innerHTML = buildModalHtml();
+    }
+
+    function buildModalHtml() {
+      if (!state.openModal) return '';
+      var m = state.openModal;
+      var date = m.date;
+      var student = m.student;
+      var minutes = m.minutes;
+      var type = m.type;
+
+      var typeLabels = { F: 'Frequency / Duration', A: 'Antecedents', C: 'Consequences', notes: 'Notes' };
+      var title = typeLabels[type] || '';
+      var timeLabel = minutesToLabel(minutes);
+
+      var content = '';
+      var footer = '';
+
+      if (type === 'F') {
+        content = buildFModalContent(date, student, minutes);
+      } else if (type === 'A') {
+        content = buildAModalContent(date, student, minutes);
+      } else if (type === 'C') {
+        content = buildCModalContent(date, student, minutes);
+      } else if (type === 'notes') {
+        content = buildNotesModalContent(date, student, minutes);
+        footer = '<div class="px-4 py-3 border-t border-gray-100 flex-shrink-0 flex gap-2">'
+          + '<button class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200" onclick="closeModal()">Cancel</button>'
+          + '<button class="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700" onclick="saveNoteFromModal()">Save</button>'
+          + '</div>';
+      }
+
+      return '<div class="fixed inset-0 z-50 bg-black bg-opacity-40 flex items-end" onclick="handleModalOverlayClick(event)">'
+        + '<div role="dialog" aria-modal="true" aria-labelledby="modal-title" class="bg-white w-full max-w-lg mx-auto rounded-t-2xl shadow-2xl flex flex-col" style="max-height:70vh" onclick="event.stopPropagation()">'
+        + '<div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">'
+        + '<div>'
+        + '<div class="text-xs text-gray-400 font-medium">' + escHtml(timeLabel) + ' \u2014 ' + escHtml(student) + '</div>'
+        + '<div id="modal-title" class="text-sm font-semibold text-gray-800">' + escHtml(title) + '</div>'
+        + '</div>'
+        + '<button aria-label="Close" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 font-bold text-sm leading-none" onclick="closeModal()">&#215;</button>'
+        + '</div>'
+        + '<div id="modal-content-inner" class="overflow-y-auto flex-1 px-4 py-1">' + content + '</div>'
+        + footer
+        + '</div>'
+        + '</div>';
+    }
+
+    function buildFModalContent(date, student, minutes) {
+      var studentObj = state.students.find(function(s) { return s.name === student; });
+      var behaviors = studentObj ? studentObj.behaviors : [];
+      var dA = escAttr(date);
+      var sA = escAttr(student);
+
+      if (!behaviors.length) {
+        return '<p class="text-center text-sm text-gray-400 py-6">No behaviors configured.</p>';
+      }
+
+      return behaviors.map(function(bObj) {
+        var bName = bObj.name;
+        var type = bObj.type;
+        var count = getCount(date, student, minutes, bName);
+        var bA = escAttr(bName);
+        var display = type === 'duration'
+          ? (count ? count.toFixed(1) + '\u00a0min' : '0.0\u00a0min')
+          : String(count);
+
+        return '<div class="flex items-center py-2.5 border-b border-gray-100 last:border-0">'
+          + '<div class="flex-1 min-w-0 mr-3">'
+          + '<div class="text-sm font-medium text-gray-700 truncate">' + escHtml(bName) + '</div>'
+          + '<div class="text-xs text-gray-400 capitalize">' + type + '</div>'
+          + '</div>'
+          + '<div class="flex items-center gap-2 flex-shrink-0">'
+          + '<button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 font-bold text-base leading-none"'
+          + ' onclick="decrModal(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'' + bA + '\',\'' + type + '\')">&#8722;</button>'
+          + '<span class="w-16 text-center text-sm font-semibold tabular-nums text-gray-800">' + escHtml(display) + '</span>'
+          + '<button class="w-8 h-8 flex items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 font-bold text-base leading-none"'
+          + ' onclick="incrModal(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'' + bA + '\',\'' + type + '\')">+</button>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    function buildAModalContent(date, student, minutes) {
+      var dA = escAttr(date);
+      var sA = escAttr(student);
+      var current = getAntecedents(date, student, minutes, '_slot');
+
+      return ANTECEDENT_OPTIONS.map(function(opt) {
+        var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
+        var oA = escAttr(opt);
+        return '<label class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 cursor-pointer">'
+          + '<input type="checkbox" class="w-4 h-4 accent-blue-600"' + checked
+          + ' onchange="toggleAntecedent(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'_slot\',\'' + oA + '\')">'
+          + '<span class="text-sm text-gray-700">' + escHtml(opt) + '</span>'
+          + '</label>';
+      }).join('');
+    }
+
+    function buildCModalContent(date, student, minutes) {
+      var dA = escAttr(date);
+      var sA = escAttr(student);
+      var current = getConsequences(date, student, minutes, '_slot');
+
+      return CONSEQUENCE_OPTIONS.map(function(opt) {
+        var checked = current.indexOf(opt) !== -1 ? ' checked' : '';
+        var oA = escAttr(opt);
+        return '<label class="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0 cursor-pointer">'
+          + '<input type="checkbox" class="w-4 h-4 accent-blue-600"' + checked
+          + ' onchange="toggleConsequence(\'' + dA + '\',\'' + sA + '\',' + minutes + ',\'_slot\',\'' + oA + '\')">'
+          + '<span class="text-sm text-gray-700">' + escHtml(opt) + '</span>'
+          + '</label>';
+      }).join('');
+    }
+
+    function buildNotesModalContent(date, student, minutes) {
+      var note = getNote(date, student, minutes);
+      return '<div class="py-2">'
+        + '<textarea id="modal-notes-textarea"'
+        + ' class="w-full h-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"'
+        + ' placeholder="Add notes for this time slot...">'
+        + escHtml(note)
+        + '</textarea>'
+        + '</div>';
+    }
+
+    function incrModal(date, student, minutes, behavior, type) {
+      var cur = getCount(date, student, minutes, behavior);
+      if (type === 'duration') cur += 0.5;
+      else cur += 1;
+      setCount(date, student, minutes, behavior, cur);
+      var inner = document.getElementById('modal-content-inner');
+      if (inner) inner.innerHTML = buildFModalContent(date, student, minutes);
+    }
+
+    function decrModal(date, student, minutes, behavior, type) {
+      var cur = getCount(date, student, minutes, behavior);
+      if (cur > 0) {
+        var step = type === 'duration' ? 0.5 : 1;
+        if (cur <= step) cur = 0;
+        else cur -= step;
+      }
+      setCount(date, student, minutes, behavior, cur);
+      var inner = document.getElementById('modal-content-inner');
+      if (inner) inner.innerHTML = buildFModalContent(date, student, minutes);
+    }
+
+    function saveNoteFromModal() {
+      var textarea = document.getElementById('modal-notes-textarea');
+      var m = state.openModal;
+      if (!m || !textarea) return;
+      saveNote(m.date, m.student, m.minutes, textarea.value);
+      closeModal();
+    }
 
     // ── SUMMARY PAGE ───────────────────────────────────────────
 
