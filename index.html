@@ -429,11 +429,7 @@ async function saveDataEntry(date, student, minutes, behavior, count, antecedent
 async function initApp() {
   await loadData();
 
-  const dates = Object.keys(state.records);
-
-  if (dates.length > 0) {
-    state.selectedDate = dates.sort().reverse()[0];
-  }
+  state.selectedDate = todayStr();
 
   if (state.students.length > 0 && !state.selectedStudent) {
     state.selectedStudent = state.students[0].name;
